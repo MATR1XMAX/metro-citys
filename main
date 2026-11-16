@@ -1,0 +1,101 @@
+// ==================== ГЛАВНЫЙ ФАЙЛ ====================
+import * as THREE from 'three';
+import { GAME, initGame } from './js/world.js';
+import { initEntities, updatePlayer, updateCar, updateMotorcycle, updateBoat, updateHeli, updateCamera } from './js/entities.js';
+import { initNPCs, updatePeds, updateCops, tryTalkNPC } from './js/npc.js';
+import { initMissions, initJobs, updateMission, updateJob, checkMissions, startMission } from './js/missions.js';
+import { initUI, show, hide, hideAll, toast, updateHUD, updateWanted, updateWeaponUI, syncSettings } from './js/ui.js';
+import { updateDayNight, updateWeather, setWeather, applyQuality, initPhysics } from './js/physics.js';
+
+window.THREE = THREE;
+window.GAME = GAME;
+
+// Экспортируем в глобал для кросс-модулей
+window.GAME_API = {
+  THREE,
+  updatePlayer, updateCar, updateMotorcycle, updateBoat, updateHeli,
+  updateCamera, updatePeds, updateCops, updateMission, updateJob,
+  checkMissions, startMission, updateDayNight, updateWeather,
+  updateHUD, updateWanted, updateWeaponUI, toast, show, hide, hideAll
+};
+
+// ==================== СТАРТ ====================
+async function boot() {
+  try {
+    await initGame();
+    initEntities();
+    initNPCs();
+    initMissions();
+    initJobs();
+    initUI();
+    initPhysics();
+    
+    document.getElementById('loading').classList.add('hidden');
+    show('menu');
+    animate();
+  } catch (e) {
+    console.error('Boot error:', e);
+    document.getElementById('loading').innerHTML = `
+      <div style="color:#f88;padding:30px;text-align:center;font-size:14px;max-width:90vw">
+        <h2 style="color:#f44;margin-bottom:20px">⚠ Ошибка загрузки</h2>
+        <div style="font-family:monospace;word-break:break-all">${e.message}</div>
+        <div style="margin-top:10px;color:#aaa;font-size:12px">${(e.stack || '').split('\n').slice(0,3).join('<br>')}</div>
+        <button onclick="location.reload()" style="margin-top:20px;background:#f5a623;color:#000;border:none;padding:10px 20px;border-radius:6px;font-weight:700;cursor:pointer">Перезагрузить</button>
+      </div>`;
+  }
+}
+
+// ==================== ГЛАВНЫЙ ЦИКЛ ====================
+let lastTime = 0;
+let frameErrors = 0;
+
+function animate() {
+  requestAnimationFrame(animate);
+  try {
+    const dt = Math.min(0.05, GAME.clock.getDelta());
+    
+    updateDayNight(dt);
+    updateWeather(dt);
+    
+    if (GAME.gameActive && GAME.currentUI === 'game') {
+      updatePlayer(dt);
+      updateCar(dt);
+      updateMotorcycle(dt);
+      updateBoat(dt);
+      updateHeli(dt);
+      updatePeds(dt);
+      updateCops(dt);
+      updateMission(dt);
+      updateJob(dt);
+      checkMissions();
+      updateCamera(dt);
+      
+      // Мини-карта
+      if (window.GAME_MINIMAP) window.GAME_MINIMAP();
+      
+      if (GAME.wanted > 0) {
+        GAME.wantedTimer -= dt;
+        if (GAME.wantedTimer <= 0) { GAME.wanted = 0; updateWanted(); }
+      }
+    }
+    
+    GAME.renderer.render(GAME.scene, GAME.camera);
+    frameErrors = 0;
+  } catch (e) {
+    frameErrors++;
+    console.error('Frame error:', e);
+    if (frameErrors > 60) return;
+  }
+}
+
+// Watchdog
+setInterval(() => {
+  if (lastTime && performance.now() - lastTime > 5000 && GAME.gameActive) {
+    console.warn('Watchdog: resetting position');
+    if (GAME.player) GAME.player.pos.set(0, 0, 30);
+  }
+  lastTime = performance.now();
+}, 2000);
+
+// ==================== ЗАПУСК ====================
+window.addEventListener('load', boot);
